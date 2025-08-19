@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: room-rental-backend
+    env: python
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install -r backend/requirements.txt
+      cd backend && python manage.py collectstatic --noinput && python manage.py migrate
+    startCommand: cd backend && daphne -b 0.0.0.0 -p $PORT room_rental.asgi:application
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECURE_SSL_REDIRECT
+        value: True
+      - key: SESSION_COOKIE_SECURE
+        value: True
+      - key: CSRF_COOKIE_SECURE
+        value: True

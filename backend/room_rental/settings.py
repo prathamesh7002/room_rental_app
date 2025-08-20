@@ -81,17 +81,17 @@ ASGI_APPLICATION = 'room_rental.asgi.application'
 import pymysql
 pymysql.install_as_MySQLdb()
 
-DATABASE_ENGINE = os.getenv('DATABASE_ENGINE', 'django.db.backends.sqlite3')
+DATABASE_ENGINE = os.getenv('DATABASE_ENGINE', 'django.db.backends.mysql')
 
 if DATABASE_ENGINE == 'django.db.backends.mysql':
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
-            'NAME': os.getenv('DATABASE_NAME', 'roomrental'),
-            'USER': os.getenv('DATABASE_USER', ''),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
+            'NAME': os.getenv('DATABASE_NAME', 'rental_room_app_db'),
+            'USER': os.getenv('DATABASE_USER', 'root'),
+            'PASSWORD': os.getenv('DATABASE_PASSWORD', '2007'),
             'HOST': os.getenv('DATABASE_HOST', 'localhost'),
-            'PORT': os.getenv('DATABASE_PORT', '5432'),
+            'PORT': os.getenv('DATABASE_PORT', '3306'),
         }
     }
 else:

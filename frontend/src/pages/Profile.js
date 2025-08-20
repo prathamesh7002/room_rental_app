@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -26,6 +26,17 @@ const Profile = () => {
     bio: ''
   });
 
+  const fetchUserRooms = useCallback(async () => {
+    try {
+      const response = await axios.get(`${config.apiBaseUrl}/rooms/my-rooms/`);
+      setUserRooms(response.data);
+    } catch (error) {
+      console.error('Error fetching user rooms:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login');
@@ -40,18 +51,7 @@ const Profile = () => {
       });
     }
     fetchUserRooms();
-  }, [isAuthenticated, user]);
-
-  const fetchUserRooms = async () => {
-    try {
-      const response = await axios.get(`${config.apiBaseUrl}/rooms/my-rooms/`);
-      setUserRooms(response.data);
-    } catch (error) {
-      console.error('Error fetching user rooms:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [isAuthenticated, user, navigate, fetchUserRooms]);
 
   const deleteRoom = async (roomId) => {
     if (window.confirm('Are you sure you want to delete this room?')) {

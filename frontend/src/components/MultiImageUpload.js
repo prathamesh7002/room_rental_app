@@ -76,18 +76,6 @@ const MultiImageUpload = ({ images = [], onImagesChange, maxImages = 10 }) => {
     fileInputRef.current?.click();
   };
 
-  const reorderImages = (dragIndex, hoverIndex) => {
-    const draggedImage = previews[dragIndex];
-    const newPreviews = [...previews];
-    newPreviews.splice(dragIndex, 1);
-    newPreviews.splice(hoverIndex, 0, draggedImage);
-    
-    setPreviews(newPreviews);
-    if (onImagesChange) {
-      onImagesChange(newPreviews);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">

@@ -1,16 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  MapPinIcon,
-  MagnifyingGlassIcon,
-  XMarkIcon,
-  AdjustmentsHorizontalIcon
-} from '@heroicons/react/24/outline';
+import { MapPinIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
 const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) => {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
-  const [markers, setMarkers] = useState([]);
-  const [searchBox, setSearchBox] = useState(null);
+  const markersRef = useRef([]);
+  const [, setSearchBox] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [mapError, setMapError] = useState(null);
   const searchInputRef = useRef(null);
@@ -25,7 +20,7 @@ const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) =
         }
 
         const { Map } = await window.google.maps.importLibrary('maps');
-        const { AdvancedMarkerElement } = await window.google.maps.importLibrary('marker');
+        await window.google.maps.importLibrary('marker');
 
         // Default location (India)
         const defaultCenter = { lat: 20.5937, lng: 78.9629 };
@@ -87,6 +82,7 @@ const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) =
       script.defer = true;
       script.onload = initializeMap;
       script.onerror = () => {
+        markersRef.current = []; 
         setMapError('Failed to load Google Maps');
         setIsLoading(false);
       };
@@ -101,65 +97,35 @@ const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) =
     if (!map || !window.google) return;
 
     // Clear existing markers
-    markers.forEach(marker => marker.setMap(null));
+    markersRef.current.forEach(marker => marker.setMap(null));
 
+    // Add new markers
     const newMarkers = rooms.map(room => {
-      if (!room.latitude || !room.longitude) return null;
-
-      // Create custom marker element
-      const markerElement = document.createElement('div');
-      markerElement.className = `
-        relative bg-white rounded-lg shadow-lg border-2 p-2 cursor-pointer transform transition-transform hover:scale-110
-        ${selectedRoom?.id === room.id ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}
-      `;
-      markerElement.innerHTML = `
-        <div class="flex items-center space-x-2">
-          <div class="w-12 h-12 rounded-lg overflow-hidden bg-gray-200">
-            ${room.images?.[0] ? 
-              `<img src="${room.images[0].image}" alt="${room.title}" class="w-full h-full object-cover">` :
-              `<div class="w-full h-full flex items-center justify-center"><svg class="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"></path></svg></div>`
-            }
-          </div>
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-gray-900 truncate">${room.title}</p>
-            <p class="text-xs text-blue-600 font-bold">₹${room.rent}/month</p>
-          </div>
-        </div>
-        <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white"></div>
-      `;
-
-      const marker = new window.google.maps.marker.AdvancedMarkerElement({
+      const marker = new window.google.maps.Marker({
         position: { lat: parseFloat(room.latitude), lng: parseFloat(room.longitude) },
-        map: map,
-        content: markerElement,
-        title: room.title
-      });
-
-      // Add click listener
-      markerElement.addEventListener('click', () => {
-        if (onRoomSelect) {
-          onRoomSelect(room);
+        map,
+        title: room.title,
+        icon: {
+          url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+          scaledSize: new window.google.maps.Size(40, 40)
         }
       });
 
+      marker.addListener('click', () => {
+        if (onRoomSelect) onRoomSelect(room);
+      });
+
       return marker;
-    }).filter(Boolean);
+    });
 
-    setMarkers(newMarkers);
+    markersRef.current = newMarkers;
 
-    // Fit map to show all markers
-    if (newMarkers.length > 0) {
-      const bounds = new window.google.maps.LatLngBounds();
-      newMarkers.forEach(marker => {
-        bounds.extend(marker.position);
-      });
-      map.fitBounds(bounds);
-      
-      // Ensure minimum zoom level
-      const listener = window.google.maps.event.addListener(map, 'idle', () => {
-        if (map.getZoom() > 15) map.setZoom(15);
-        window.google.maps.event.removeListener(listener);
-      });
+    // Center map on selected room if available
+    if (selectedRoom) {
+      const selectedMarker = newMarkers.find(m => m.getTitle() === selectedRoom.title);
+      if (selectedMarker) {
+        map.panTo(selectedMarker.getPosition());
+      }
     }
   }, [map, rooms, selectedRoom, onRoomSelect]);
 

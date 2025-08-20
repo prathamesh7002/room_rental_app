@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { config } from '../utils/config';
 
@@ -18,17 +18,20 @@ export const AuthProvider = ({ children }) => {
 
   const API_BASE_URL = config.apiBaseUrl;
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/auth/profile/`);
+      const response = await axios.get(`${API_BASE_URL}/auth/user/`);
       setUser(response.data);
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      logout();
+      console.error('Failed to fetch user profile:', error);
+      // Clear invalid tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      delete axios.defaults.headers.common['Authorization'];
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE_URL]);
 
   // Configure axios defaults
   useEffect(() => {
@@ -39,7 +42,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [fetchUserProfile]);
 
   const login = async (username, password) => {
     try {

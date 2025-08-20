@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { config } from '../utils/config';
@@ -12,22 +12,22 @@ import {
 const WishlistButton = ({ roomId, className = '' }) => {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    if (isAuthenticated && roomId) {
-      checkWishlistStatus();
-    }
-  }, [isAuthenticated, roomId]);
-
-  const checkWishlistStatus = async () => {
+  const checkWishlistStatus = useCallback(async () => {
     try {
       const response = await axios.get(`${config.apiBaseUrl}/wishlist/check/${roomId}/`);
       setIsWishlisted(response.data.is_wishlisted);
     } catch (error) {
       console.error('Error checking wishlist status:', error);
     }
-  };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (isAuthenticated && roomId) {
+      checkWishlistStatus();
+    }
+  }, [isAuthenticated, roomId, checkWishlistStatus]);
 
   const toggleWishlist = async (e) => {
     e.preventDefault();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { config } from '../utils/config';
@@ -12,6 +12,8 @@ const Chat = () => {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editText, setEditText] = useState('');
   const wsRef = useRef(null);
   const currentRoomIdRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -19,20 +21,7 @@ const Chat = () => {
   const targetUserId = searchParams.get('user');
   const targetRoomId = searchParams.get('room');
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-    
-    fetchChatRooms().then(() => {
-      if (targetUserId) {
-        createOrGetChatRoom(targetUserId);
-      } else if (targetRoomId) {
-        openRoomById(targetRoomId);
-      }
-    });
-  }, [isAuthenticated, targetUserId, targetRoomId]);
+  // Initial load effect is defined below after helpers
 
   useEffect(() => {
     scrollToBottom();
@@ -51,7 +40,121 @@ const Chat = () => {
     }
   };
 
-  const openRoomById = async (roomId) => {
+  // Stable helpers first so they can be safely referenced below
+  const fetchMessages = useCallback(async (roomId, autoMarkRead = false) => {
+    try {
+      const response = await axios.get(`${config.apiBaseUrl}/chat/messages/${roomId}/`);
+      const list = response.data || [];
+      setMessages(list);
+      if (autoMarkRead) {
+        const latestUnread = [...list].reverse().find(m => m.sender.id !== user.id && !m.is_read);
+        if (latestUnread) {
+          setTimeout(() => {
+            try {
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ action: 'read', message_id: latestUnread.id }));
+              }
+            } catch (_) {}
+          }, 0);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  }, [user]);
+
+  const connectWebSocket = useCallback((roomId) => {
+    if (wsRef.current) {
+      try { wsRef.current.onclose = null; wsRef.current.close(); } catch (_) {}
+    }
+
+    currentRoomIdRef.current = roomId;
+
+    const token = localStorage.getItem('access_token');
+    const wsUrl = `${config.wsBaseUrl}/chat/${roomId}/?token=${encodeURIComponent(token || '')}`;
+    const websocket = new WebSocket(wsUrl);
+
+    websocket.onopen = () => {
+      wsRef.current = websocket;
+      console.log('WebSocket connected');
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === 'edited') {
+        setMessages(prev => prev.map(m =>
+          m.id === data.message_id ? { ...m, message: data.message, is_edited: true } : m
+        ));
+        return;
+      }
+      if (data.event === 'deleted') {
+        setMessages(prev => prev.map(m =>
+          m.id === data.message_id ? { ...m, message: 'This message was deleted', is_deleted: true } : m
+        ));
+        return;
+      }
+
+      if (data.event === 'read') {
+        setMessages(prev => prev.map(m =>
+          m.id === data.message_id ? { ...m, is_read: true } : m
+        ));
+        return;
+      }
+
+      if (data.sender_id === user.id) {
+        setMessages(prev => {
+          const copy = [...prev];
+          for (let i = copy.length - 1; i >= 0; i--) {
+            const m = copy[i];
+            if (m.sender.id === user.id && String(m.id).startsWith('temp-')) {
+              copy[i] = { ...m, id: data.message_id, timestamp: data.timestamp, delivered: true };
+              break;
+            }
+          }
+          return copy;
+        });
+        return;
+      }
+
+      setMessages(prev => [...prev, {
+        id: data.message_id,
+        sender: { id: data.sender_id, username: data.sender_username },
+        message: data.message,
+        timestamp: data.timestamp,
+        is_read: false,
+      }]);
+      setChatRooms(prev => prev.map(r => r.id === currentRoomIdRef.current
+        ? { ...r, last_message: { message: data.message, timestamp: data.timestamp } }
+        : r
+      ));
+      try {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ action: 'read', message_id: data.message_id }));
+        }
+      } catch (_) {}
+    };
+
+    websocket.onerror = (err) => {
+      console.error('WebSocket error', err);
+    };
+
+    websocket.onclose = () => {
+      console.log('WebSocket disconnected');
+      const targetId = currentRoomIdRef.current;
+      if (targetId === roomId) {
+        setTimeout(() => {
+          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+            connectWebSocket(roomId);
+          }
+        }, 1500);
+      }
+    };
+
+    wsRef.current = websocket;
+  }, [user]);
+
+  const openRoomById = useCallback(async (roomId) => {
     try {
       // Try to find in current list; if not present, refetch
       let room = chatRooms.find(r => String(r.id) === String(roomId));
@@ -69,9 +172,9 @@ const Chat = () => {
     } catch (err) {
       console.error('Error opening room by id:', err);
     }
-  };
+  }, [chatRooms, connectWebSocket, fetchMessages]);
 
-  const createOrGetChatRoom = async (userId) => {
+  const createOrGetChatRoom = useCallback(async (userId) => {
     try {
       const response = await axios.get(`${config.apiBaseUrl}/chat/room/${userId}/`);
       setSelectedRoom(response.data);
@@ -80,118 +183,24 @@ const Chat = () => {
     } catch (error) {
       console.error('Error creating/getting chat room:', error);
     }
-  };
+  }, [connectWebSocket, fetchMessages]);
 
-  const fetchMessages = async (roomId, autoMarkRead = false) => {
-    try {
-      const response = await axios.get(`${config.apiBaseUrl}/chat/messages/${roomId}/`);
-      const list = response.data || [];
-      setMessages(list);
-      if (autoMarkRead) {
-        // Mark the latest unread incoming message as read
-        const latestUnread = [...list].reverse().find(m => m.sender.id !== user.id && !m.is_read);
-        if (latestUnread) {
-          setTimeout(() => {
-            try {
-              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ action: 'read', message_id: latestUnread.id }));
-              }
-            } catch (_) {}
-          }, 0);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    }
-  };
-
-  const connectWebSocket = (roomId) => {
-    // Close any existing socket
-    if (wsRef.current) {
-      try { wsRef.current.onclose = null; wsRef.current.close(); } catch (_) {}
+  // Initial load effect (after helpers defined to avoid no-use-before-define)
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
     }
 
-    currentRoomIdRef.current = roomId;
-
-    const token = localStorage.getItem('access_token');
-    const wsUrl = `${config.wsBaseUrl}/chat/${roomId}/?token=${encodeURIComponent(token || '')}`;
-    const websocket = new WebSocket(wsUrl);
-
-    websocket.onopen = () => {
-      // Keep a stable reference
-      wsRef.current = websocket;
-      console.log('WebSocket connected');
-    };
-
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      // Read receipt event
-      if (data.event === 'read') {
-        setMessages(prev => prev.map(m =>
-          m.id === data.message_id ? { ...m, is_read: true } : m
-        ));
-        return;
+    fetchChatRooms().then(() => {
+      if (targetUserId) {
+        createOrGetChatRoom(targetUserId);
+      } else if (targetRoomId) {
+        openRoomById(targetRoomId);
       }
+    });
+  }, [isAuthenticated, targetUserId, targetRoomId, createOrGetChatRoom, openRoomById, navigate]);
 
-      // Own message echo: replace optimistic temp with real ID/timestamp and mark delivered
-      if (data.sender_id === user.id) {
-        setMessages(prev => {
-          const copy = [...prev];
-          for (let i = copy.length - 1; i >= 0; i--) {
-            const m = copy[i];
-            if (m.sender.id === user.id && String(m.id).startsWith('temp-')) {
-              copy[i] = { ...m, id: data.message_id, timestamp: data.timestamp, delivered: true };
-              break;
-            }
-          }
-          return copy;
-        });
-        return;
-      }
-
-      // Message from other user
-      setMessages(prev => [...prev, {
-        id: data.message_id,
-        sender: { id: data.sender_id, username: data.sender_username },
-        message: data.message,
-        timestamp: data.timestamp,
-        is_read: false,
-      }]);
-      // Update chatRooms preview (last_message)
-      setChatRooms(prev => prev.map(r => r.id === currentRoomIdRef.current
-        ? { ...r, last_message: { message: data.message, timestamp: data.timestamp } }
-        : r
-      ));
-      // Immediately send read receipt for messages from other user in the open room
-      try {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ action: 'read', message_id: data.message_id }));
-        }
-      } catch (_) {}
-    };
-
-    websocket.onerror = (err) => {
-      console.error('WebSocket error', err);
-    };
-
-    websocket.onclose = () => {
-      console.log('WebSocket disconnected');
-      // Attempt lightweight reconnect if still on this room
-      const targetId = currentRoomIdRef.current;
-      if (targetId === roomId) {
-        setTimeout(() => {
-          // Only reconnect if still viewing the same room and no open socket
-          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
-            connectWebSocket(roomId);
-          }
-        }, 1500);
-      }
-    };
-
-    // Assign immediately to ref to be available for sendMessage
-    wsRef.current = websocket;
-  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -223,6 +232,50 @@ const Chat = () => {
     ));
 
     setNewMessage('');
+  };
+
+  // Edit/Delete helpers
+  const startEdit = (msg) => {
+    setEditingMessageId(msg.id);
+    setEditText(msg.message);
+  };
+
+  const cancelEdit = () => {
+    setEditingMessageId(null);
+    setEditText('');
+  };
+
+  const saveEdit = () => {
+    if (!editText.trim() || !wsRef.current) return;
+    try {
+      wsRef.current.send(JSON.stringify({ action: 'edit', message_id: editingMessageId, message: editText.trim() }));
+      setEditingMessageId(null);
+      setEditText('');
+    } catch (_) {}
+  };
+
+  const deleteMessage = (msgId) => {
+    if (!wsRef.current) return;
+    try {
+      wsRef.current.send(JSON.stringify({ action: 'delete', message_id: msgId }));
+      if (editingMessageId === msgId) {
+        cancelEdit();
+      }
+    } catch (_) {}
+  };
+
+  const renderStatus = (m) => {
+    if (m.sender.id !== user.id) return null;
+    // seen
+    if (m.is_read) {
+      return <span className="ml-1 text-xs text-blue-400">✓✓</span>;
+    }
+    // delivered
+    if (m.delivered) {
+      return <span className="ml-1 text-xs text-gray-300">✓✓</span>;
+    }
+    // sent
+    return <span className="ml-1 text-xs text-gray-300">✓</span>;
   };
 
   const selectChatRoom = (room) => {
@@ -323,20 +376,45 @@ const Chat = () => {
                       className={`flex ${message.sender.id === user.id ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow ${
                           message.sender.id === user.id
                             ? 'bg-primary-600 text-white'
                             : 'bg-gray-200 text-gray-900'
                         }`}
                       >
-                        <p>{message.message}</p>
-                        <p className={`text-xs mt-1 ${
-                          message.sender.id === user.id ? 'text-primary-100' : 'text-gray-500'
-                        }`}>
-                          {new Date(message.timestamp).toLocaleTimeString()}
-                        </p>
-                        {message.sender.id === user.id && idx === messages.length - 1 && message.is_read && (
-                          <p className="text-xs mt-0.5 text-primary-100">Seen</p>
+                        {editingMessageId === message.id ? (
+                          <div className="space-y-2">
+                            <input
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              className={`w-full px-3 py-2 rounded-md focus:outline-none ${message.sender.id === user.id ? 'text-gray-900' : ''}`}
+                            />
+                            <div className="flex items-center justify-end space-x-3 text-xs">
+                              <button type="button" onClick={cancelEdit} className="opacity-80 hover:opacity-100">Cancel</button>
+                              <button type="button" onClick={saveEdit} className="font-semibold underline">Save</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className={`${message.is_deleted ? 'italic opacity-70' : ''}`}>
+                              {message.message}
+                              {message.is_edited && !message.is_deleted && (
+                                <span className={`ml-2 text-[10px] ${message.sender.id === user.id ? 'text-primary-100' : 'text-gray-500'}`}>(edited)</span>
+                              )}
+                            </p>
+                            <div className={`flex items-center justify-end text-xs mt-1 ${
+                              message.sender.id === user.id ? 'text-primary-100' : 'text-gray-500'
+                            }`}>
+                              <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
+                              {renderStatus(message)}
+                            </div>
+                            {message.sender.id === user.id && !message.is_deleted && (
+                              <div className="flex items-center justify-end space-x-3 mt-1 text-[11px] opacity-90">
+                                <button type="button" onClick={() => startEdit(message)} className="underline">Edit</button>
+                                <button type="button" onClick={() => deleteMessage(message.id)} className="underline">Delete</button>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

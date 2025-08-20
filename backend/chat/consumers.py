@@ -48,6 +48,38 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     )
             return
 
+        # Edit message
+        if action == 'edit':
+            message_id = data.get('message_id')
+            new_text = data.get('message', '').strip()
+            if message_id and new_text:
+                updated = await self.edit_message(message_id, self.scope['user'].id, new_text)
+                if updated:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'message_edited',
+                            'message_id': message_id,
+                            'message': new_text,
+                        }
+                    )
+            return
+
+        # Delete message (soft delete)
+        if action == 'delete':
+            message_id = data.get('message_id')
+            if message_id:
+                updated = await self.delete_message(message_id, self.scope['user'].id)
+                if updated:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'message_deleted',
+                            'message_id': message_id,
+                        }
+                    )
+            return
+
         # Default: send chat message
         message = data['message']
         receiver_id = data['receiver_id']
@@ -91,6 +123,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message_id': event['message_id'],
             'reader_id': event['reader_id'],
         }))
+
+    async def message_edited(self, event):
+        await self.send(text_data=json.dumps({
+            'event': 'edited',
+            'message_id': event['message_id'],
+            'message': event['message'],
+        }))
+
+    async def message_deleted(self, event):
+        await self.send(text_data=json.dumps({
+            'event': 'deleted',
+            'message_id': event['message_id'],
+        }))
     
     @database_sync_to_async
     def save_message(self, sender, receiver_id, message):
@@ -128,6 +173,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except ChatMessage.DoesNotExist:
             return False
         return False
+
+    @database_sync_to_async
+    def edit_message(self, message_id, editor_id, new_text):
+        try:
+            msg = ChatMessage.objects.get(id=message_id)
+            if msg.sender_id != editor_id:
+                return False
+            if msg.is_deleted:
+                return False
+            from django.utils import timezone
+            msg.message = new_text
+            msg.is_edited = True
+            msg.edited_at = timezone.now()
+            msg.save(update_fields=['message', 'is_edited', 'edited_at'])
+            return True
+        except ChatMessage.DoesNotExist:
+            return False
+
+    @database_sync_to_async
+    def delete_message(self, message_id, deleter_id):
+        try:
+            msg = ChatMessage.objects.get(id=message_id)
+            if msg.sender_id != deleter_id:
+                return False
+            if msg.is_deleted:
+                return True
+            from django.utils import timezone
+            msg.is_deleted = True
+            msg.deleted_at = timezone.now()
+            # Optionally redact content; keep placeholder
+            msg.message = 'This message was deleted'
+            msg.save(update_fields=['is_deleted', 'deleted_at', 'message'])
+            return True
+        except ChatMessage.DoesNotExist:
+            return False
 
     @database_sync_to_async
     def create_notification(self, receiver_id, message, chat_message):

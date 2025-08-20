@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Q
 from .models import Room, RoomImage, WishlistItem
 from .serializers import RoomSerializer, RoomCreateSerializer, RoomImageSerializer
@@ -67,6 +68,9 @@ def upload_room_image(request, room_id):
     except Room.DoesNotExist:
         return Response({'error': 'Room not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # Ensure multipart parsing for file uploads
+    request.parsers = [MultiPartParser(), FormParser()]
+
     serializer = RoomImageSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save(room=room)

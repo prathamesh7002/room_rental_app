@@ -49,26 +49,58 @@ const PostRoom = () => {
     setError('');
 
     try {
-      // Create room
-      const roomResponse = await axios.post(`${config.apiBaseUrl}/rooms/create/`, formData);
+      // Create room (only backend-accepted fields)
+      const createPayload = {
+        title: formData.title,
+        description: formData.description,
+        rent: formData.rent,
+        location: formData.location,
+        room_type: formData.room_type,
+        wifi: formData.wifi,
+        ac: formData.ac,
+        furnished: formData.furnished,
+        parking: formData.parking,
+        laundry: formData.laundry,
+      };
+      const roomResponse = await axios.post(`${config.apiBaseUrl}/rooms/create/`, createPayload, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+        },
+      });
       const roomId = roomResponse.data.id;
 
-      // Upload images if any
+      // Upload images if any (non-blocking per-image errors)
+      let failedUploads = 0;
       if (images.length > 0) {
-        for (const image of images) {
-          const imageFormData = new FormData();
-          imageFormData.append('image', image);
-          
-          await axios.post(`${config.apiBaseUrl}/rooms/${roomId}/upload-image/`, imageFormData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
+        for (const img of images) {
+          const file = img?.file || img; // support preview objects or raw File
+          if (!file) continue;
+
+          try {
+            const imageFormData = new FormData();
+            imageFormData.append('image', file);
+
+            await axios.post(`${config.apiBaseUrl}/rooms/${roomId}/upload-image/`, imageFormData, {
+              headers: {
+                'Content-Type': 'multipart/form-data',
+                Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+              },
+            });
+          } catch (uploadErr) {
+            // Log and count failures but don't block the flow
+            console.error('Image upload failed:', uploadErr?.response?.data || uploadErr?.message);
+            failedUploads += 1;
+          }
         }
+      }
+
+      if (failedUploads > 0) {
+        setError(`${failedUploads} image(s) failed to upload. The room was created.`);
       }
 
       navigate(`/room/${roomId}`);
     } catch (error) {
+      console.error('Room create failed:', error?.response?.data || error?.message);
       setError(error.response?.data?.detail || 'Failed to create room');
     } finally {
       setLoading(false);
@@ -156,14 +188,12 @@ const PostRoom = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">Select Room Type</option>
-              <option value="single">Single Room</option>
-              <option value="shared">Shared Room</option>
               <option value="1bhk">1BHK Apartment</option>
               <option value="2bhk">2BHK Apartment</option>
               <option value="3bhk">3BHK Apartment</option>
-              <option value="pg">PG</option>
-              <option value="hostel">Hostel</option>
-              <option value="studio">Studio</option>
+              <option value="pg">PG for Students</option>
+              <option value="shared">Shared Room</option>
+              <option value="studio">Studio Apartment</option>
             </select>
           </div>
         </div>

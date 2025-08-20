@@ -316,7 +316,9 @@ const Home = () => {
                 <div className="h-56 bg-gray-200 relative overflow-hidden">
                   {room.images && room.images.length > 0 ? (
                     <img
-                      src={`${config.apiBaseUrl.replace('/api', '')}${room.images[0].image}`}
+                      src={room.images[0].image?.startsWith('http')
+                        ? room.images[0].image
+                        : `${config.apiBaseUrl.replace('/api', '')}${room.images[0].image}`}
                       alt={room.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />

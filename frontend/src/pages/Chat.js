@@ -17,6 +17,7 @@ const Chat = () => {
   const messagesEndRef = useRef(null);
 
   const targetUserId = searchParams.get('user');
+  const targetRoomId = searchParams.get('room');
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -24,12 +25,14 @@ const Chat = () => {
       return;
     }
     
-    fetchChatRooms();
-    
-    if (targetUserId) {
-      createOrGetChatRoom(targetUserId);
-    }
-  }, [isAuthenticated, targetUserId]);
+    fetchChatRooms().then(() => {
+      if (targetUserId) {
+        createOrGetChatRoom(targetUserId);
+      } else if (targetRoomId) {
+        openRoomById(targetRoomId);
+      }
+    });
+  }, [isAuthenticated, targetUserId, targetRoomId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -48,21 +51,55 @@ const Chat = () => {
     }
   };
 
+  const openRoomById = async (roomId) => {
+    try {
+      // Try to find in current list; if not present, refetch
+      let room = chatRooms.find(r => String(r.id) === String(roomId));
+      if (!room) {
+        const response = await axios.get(`${config.apiBaseUrl}/chat/rooms/`);
+        const list = response.data || [];
+        setChatRooms(list);
+        room = list.find(r => String(r.id) === String(roomId));
+      }
+      if (room) {
+        setSelectedRoom(room);
+        connectWebSocket(room.id);
+        fetchMessages(room.id, true);
+      }
+    } catch (err) {
+      console.error('Error opening room by id:', err);
+    }
+  };
+
   const createOrGetChatRoom = async (userId) => {
     try {
       const response = await axios.get(`${config.apiBaseUrl}/chat/room/${userId}/`);
       setSelectedRoom(response.data);
-      fetchMessages(response.data.id);
       connectWebSocket(response.data.id);
+      fetchMessages(response.data.id, true);
     } catch (error) {
       console.error('Error creating/getting chat room:', error);
     }
   };
 
-  const fetchMessages = async (roomId) => {
+  const fetchMessages = async (roomId, autoMarkRead = false) => {
     try {
       const response = await axios.get(`${config.apiBaseUrl}/chat/messages/${roomId}/`);
-      setMessages(response.data);
+      const list = response.data || [];
+      setMessages(list);
+      if (autoMarkRead) {
+        // Mark the latest unread incoming message as read
+        const latestUnread = [...list].reverse().find(m => m.sender.id !== user.id && !m.is_read);
+        if (latestUnread) {
+          setTimeout(() => {
+            try {
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ action: 'read', message_id: latestUnread.id }));
+              }
+            } catch (_) {}
+          }, 0);
+        }
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -88,22 +125,50 @@ const Chat = () => {
 
     websocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      // If this is my own message echo, skip to prevent duplicate (we add optimistically on send)
-      if (data.sender_id === user.id) {
+
+      // Read receipt event
+      if (data.event === 'read') {
+        setMessages(prev => prev.map(m =>
+          m.id === data.message_id ? { ...m, is_read: true } : m
+        ));
         return;
       }
-      // Append new message
+
+      // Own message echo: replace optimistic temp with real ID/timestamp and mark delivered
+      if (data.sender_id === user.id) {
+        setMessages(prev => {
+          const copy = [...prev];
+          for (let i = copy.length - 1; i >= 0; i--) {
+            const m = copy[i];
+            if (m.sender.id === user.id && String(m.id).startsWith('temp-')) {
+              copy[i] = { ...m, id: data.message_id, timestamp: data.timestamp, delivered: true };
+              break;
+            }
+          }
+          return copy;
+        });
+        return;
+      }
+
+      // Message from other user
       setMessages(prev => [...prev, {
         id: data.message_id,
         sender: { id: data.sender_id, username: data.sender_username },
         message: data.message,
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        is_read: false,
       }]);
       // Update chatRooms preview (last_message)
       setChatRooms(prev => prev.map(r => r.id === currentRoomIdRef.current
         ? { ...r, last_message: { message: data.message, timestamp: data.timestamp } }
         : r
       ));
+      // Immediately send read receipt for messages from other user in the open room
+      try {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ action: 'read', message_id: data.message_id }));
+        }
+      } catch (_) {}
     };
 
     websocket.onerror = (err) => {
@@ -146,7 +211,9 @@ const Chat = () => {
       id: `temp-${Date.now()}`,
       sender: { id: user.id, username: user.username },
       message: newMessage,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      is_read: false,
+      delivered: false,
     };
     setMessages(prev => [...prev, optimistic]);
     // Update chat list preview
@@ -250,7 +317,7 @@ const Chat = () => {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.map((message) => (
+                  {messages.map((message, idx) => (
                     <div
                       key={message.id}
                       className={`flex ${message.sender.id === user.id ? 'justify-end' : 'justify-start'}`}
@@ -268,6 +335,9 @@ const Chat = () => {
                         }`}>
                           {new Date(message.timestamp).toLocaleTimeString()}
                         </p>
+                        {message.sender.id === user.id && idx === messages.length - 1 && message.is_read && (
+                          <p className="text-xs mt-0.5 text-primary-100">Seen</p>
+                        )}
                       </div>
                     </div>
                   ))}

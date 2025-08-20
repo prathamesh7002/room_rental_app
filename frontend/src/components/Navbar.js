@@ -6,7 +6,7 @@ import { BellIcon, HeartIcon, CogIcon } from '@heroicons/react/24/outline';
 
 const Navbar = () => {
   const { user, logout, isAuthenticated } = useAuth();
-  const { notifications, unreadCount } = useNotifications();
+  const { notifications, unreadCount, markAsRead } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -108,12 +108,30 @@ const Navbar = () => {
                           <div className="max-h-64 overflow-y-auto">
                             {notifications.length > 0 ? (
                               notifications.slice(0, 5).map((notification) => (
-                                <div key={notification.id} className="p-3 border-b border-gray-50 hover:bg-gray-50">
-                                  <p className="text-sm text-gray-900">{notification.message}</p>
+                                <button
+                                  type="button"
+                                  key={notification.id}
+                                  onClick={() => {
+                                    const roomId = notification?.data?.room_id;
+                                    const senderId = notification?.data?.sender_id;
+                                    setShowNotifications(false);
+                                    if (!notification.is_read && notification.id) {
+                                      markAsRead(notification.id);
+                                    }
+                                    if (roomId) {
+                                      navigate(`/chat?room=${roomId}`);
+                                    } else if (senderId) {
+                                      navigate(`/chat?user=${senderId}`);
+                                    }
+                                  }}
+                                  className="w-full text-left p-3 border-b border-gray-50 hover:bg-gray-50 focus:outline-none"
+                                >
+                                  <p className="text-sm font-medium text-gray-900">{notification.title || 'Notification'}</p>
+                                  <p className="text-sm text-gray-700 truncate">{notification.message}</p>
                                   <p className="text-xs text-gray-500 mt-1">
                                     {new Date(notification.created_at).toLocaleString()}
                                   </p>
-                                </div>
+                                </button>
                               ))
                             ) : (
                               <div className="p-4 text-center text-gray-500">
@@ -229,15 +247,49 @@ const Navbar = () => {
                     <span>Profile ({user?.username})</span>
                   </Link>
                   
-                  {/* Mobile Notifications */}
-                  <div className="flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-gray-600">
-                    <span>Notifications</span>
-                    <div className="flex items-center">
-                      <BellIcon className="h-5 w-5 mr-2" />
+                  {/* Mobile Notifications (clickable list) */}
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-gray-700 bg-gray-50">
+                      <div className="flex items-center space-x-2">
+                        <BellIcon className="h-5 w-5" />
+                        <span>Notifications</span>
+                      </div>
                       {unreadCount > 0 && (
                         <span className="bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                           {unreadCount > 9 ? '9+' : unreadCount}
                         </span>
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
+                      {notifications.length > 0 ? (
+                        notifications.slice(0, 5).map((notification) => (
+                          <button
+                            type="button"
+                            key={notification.id}
+                            onClick={() => {
+                              const roomId = notification?.data?.room_id;
+                              const senderId = notification?.data?.sender_id;
+                              setIsMobileMenuOpen(false);
+                              if (!notification.is_read && notification.id) {
+                                markAsRead(notification.id);
+                              }
+                              if (roomId) {
+                                navigate(`/chat?room=${roomId}`);
+                              } else if (senderId) {
+                                navigate(`/chat?user=${senderId}`);
+                              }
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-gray-50 focus:outline-none"
+                          >
+                            <p className="text-sm font-medium text-gray-900">{notification.title || 'Notification'}</p>
+                            <p className="text-sm text-gray-700 truncate">{notification.message}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(notification.created_at).toLocaleString()}
+                            </p>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-3 text-gray-500">No notifications</div>
                       )}
                     </div>
                   </div>

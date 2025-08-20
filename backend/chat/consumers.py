@@ -28,17 +28,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
     
     async def receive(self, text_data):
-        text_data_json = json.loads(text_data)
-        message = text_data_json['message']
-        receiver_id = text_data_json['receiver_id']
-        
+        data = json.loads(text_data)
+        action = data.get('action')
+
+        # Read receipt handler
+        if action == 'read':
+            message_id = data.get('message_id')
+            if message_id:
+                # Mark as read if this user is the receiver
+                updated = await self.mark_message_read(message_id, self.scope['user'].id)
+                if updated:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'read_receipt',
+                            'message_id': message_id,
+                            'reader_id': self.scope['user'].id,
+                        }
+                    )
+            return
+
+        # Default: send chat message
+        message = data['message']
+        receiver_id = data['receiver_id']
+
         # Save message to database
         chat_message = await self.save_message(
             sender=self.scope['user'],
             receiver_id=receiver_id,
             message=message
         )
-        
+
         # Send message to room group
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -62,6 +82,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'sender_username': event['sender_username'],
             'timestamp': event['timestamp'],
             'message_id': event['message_id']
+        }))
+
+    async def read_receipt(self, event):
+        # Broadcast read receipt to both participants in room
+        await self.send(text_data=json.dumps({
+            'event': 'read',
+            'message_id': event['message_id'],
+            'reader_id': event['reader_id'],
         }))
     
     @database_sync_to_async
@@ -88,6 +116,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         chat_room.save()
         
         return chat_message
+
+    @database_sync_to_async
+    def mark_message_read(self, message_id, reader_id):
+        try:
+            msg = ChatMessage.objects.select_related('receiver').get(id=message_id)
+            if msg.receiver_id == reader_id and not msg.is_read:
+                msg.is_read = True
+                msg.save(update_fields=['is_read'])
+                return True
+        except ChatMessage.DoesNotExist:
+            return False
+        return False
 
     @database_sync_to_async
     def create_notification(self, receiver_id, message, chat_message):

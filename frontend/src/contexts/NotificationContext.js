@@ -77,11 +77,25 @@ export const NotificationProvider = ({ children }) => {
     
     // Show browser notification if permission granted
     if (Notification.permission === 'granted') {
-      new Notification(notification.title, {
+      const n = new Notification(notification.title, {
         body: notification.message,
         icon: '/favicon.ico',
         badge: '/favicon.ico'
       });
+      // Navigate to chat with sender/room on click
+      try {
+        const roomId = notification?.data?.room_id;
+        const senderId = notification?.data?.sender_id;
+        n.onclick = () => {
+          window.focus();
+          if (roomId) {
+            window.location.href = `/chat?room=${roomId}`;
+          } else if (senderId) {
+            window.location.href = `/chat?user=${senderId}`;
+          }
+          n.close();
+        };
+      } catch (_) {}
     }
   };
 

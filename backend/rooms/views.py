@@ -1,5 +1,5 @@
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -62,19 +62,19 @@ class RoomDeleteView(generics.DestroyAPIView):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
 def upload_room_image(request, room_id):
     try:
         room = Room.objects.get(id=room_id, owner=request.user)
     except Room.DoesNotExist:
         return Response({'error': 'Room not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Ensure multipart parsing for file uploads
-    request.parsers = [MultiPartParser(), FormParser()]
-
     serializer = RoomImageSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save(room=room)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        instance = serializer.save(room=room)
+        # Re-serialize with context so URL (if needed) can be absolute
+        out = RoomImageSerializer(instance, context={'request': request}).data
+        return Response(out, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

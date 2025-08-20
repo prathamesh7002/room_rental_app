@@ -12,7 +12,7 @@ import {
 const WishlistButton = ({ roomId, className = '' }) => {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth(); // user was unused, so removed
 
   const checkWishlistStatus = useCallback(async () => {
     try {

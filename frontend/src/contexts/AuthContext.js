@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile]); // fetchUserProfile is already in the dependencies
 
   const login = async (username, password) => {
     try {

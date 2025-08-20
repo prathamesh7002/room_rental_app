@@ -5,7 +5,7 @@ const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) =
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
   const markersRef = useRef([]);
-  const [, setSearchBox] = useState(null);
+  const [, setSearchBox] = useState(null); // searchBox is only needed for the setter
   const [isLoading, setIsLoading] = useState(true);
   const [mapError, setMapError] = useState(null);
   const searchInputRef = useRef(null);
@@ -92,7 +92,7 @@ const MapView = ({ rooms = [], onRoomSelect, selectedRoom, onLocationChange }) =
     }
   }, [onLocationChange]);
 
-  // Update markers when rooms change
+  // Update markers when rooms or map changes
   useEffect(() => {
     if (!map || !window.google) return;
 

@@ -10,9 +10,9 @@ services:
       - key: DEBUG
         value: False
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.12.0
       - key: DATABASE_ENGINE
-        value: django.db.backends.postgresql
+        value: django.db.backends.mysql
       - key: SECURE_SSL_REDIRECT
         value: True
       - key: SESSION_COOKIE_SECURE
@@ -20,11 +20,11 @@ services:
       - key: CSRF_COOKIE_SECURE
         value: True
     
-  - type: pserv
-    name: room-rental-postgres
-    env: postgresql
-    plan: starter
+  # - type: pserv
+  #   name: room-rental-postgres
+  #   env: postgresql
+  #   plan: starter
     
-  - type: redis
-    name: room-rental-redis
-    plan: starter
+  # - type: redis
+  #   name: room-rental-redis
+  #   plan: starter

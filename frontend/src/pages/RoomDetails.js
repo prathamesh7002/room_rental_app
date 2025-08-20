@@ -262,12 +262,7 @@ const RoomDetails = () => {
                       <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
                       Chat with Owner
                     </button>
-                    <ContactButtons 
-                      ownerPhone={room.owner.phone}
-                      ownerEmail={room.owner.email}
-                      roomTitle={room.title}
-                      roomUrl={window.location.href}
-                    />
+                    <ContactButtons owner={room.owner} room={room} />
                   </>
                 )}
                 

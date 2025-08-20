@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 import { config } from '../utils/config';
@@ -19,21 +19,10 @@ export const NotificationProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const { user, isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      connectWebSocket();
-      fetchNotifications();
-    }
-    
-    return () => {
-      disconnectWebSocket();
-    };
-  }, [isAuthenticated, user]);
-
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     try {
       const token = localStorage.getItem('access_token');
-      const wsUrl = `${config.wsBaseUrl}/ws/notifications/?token=${token}`;
+      const wsUrl = `${config.wsBaseUrl}/notifications/?token=${encodeURIComponent(token || '')}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -62,7 +51,18 @@ export const NotificationProvider = ({ children }) => {
     } catch (error) {
       console.error('Error connecting to notification WebSocket:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      connectWebSocket();
+      fetchNotifications();
+    }
+
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [isAuthenticated, user, connectWebSocket]);
 
   const disconnectWebSocket = () => {
     if (window.notificationWS) {

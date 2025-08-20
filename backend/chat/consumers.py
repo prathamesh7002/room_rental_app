@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 from .models import ChatMessage, ChatRoom
+from notifications.models import Notification
 
 User = get_user_model()
 
@@ -50,6 +51,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'message_id': chat_message.id
             }
         )
+        # Notify receiver
+        await self.create_and_send_notification(receiver_id, message, chat_message)
     
     async def chat_message(self, event):
         # Send message to WebSocket
@@ -85,3 +88,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
         chat_room.save()
         
         return chat_message
+
+    @database_sync_to_async
+    def create_notification(self, receiver_id, message, chat_message):
+        receiver = User.objects.get(id=receiver_id)
+        notif = Notification.objects.create(
+            user=receiver,
+            title=f"New message from {self.scope['user'].username}",
+            message=message,
+            data={'room_id': int(self.room_id), 'sender_id': self.scope['user'].id, 'message_id': chat_message.id}
+        )
+        return notif
+
+    async def create_and_send_notification(self, receiver_id, message, chat_message):
+        notif = await self.create_notification(receiver_id, message, chat_message)
+        await self.channel_layer.group_send(
+            f'user_{receiver_id}',
+            {
+                'type': 'notify',
+                'payload': {
+                    'id': notif.id,
+                    'title': notif.title,
+                    'message': notif.message,
+                    'data': notif.data,
+                    'is_read': notif.is_read,
+                    'created_at': notif.created_at.isoformat(),
+                }
+            }
+        )

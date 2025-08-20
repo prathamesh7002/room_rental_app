@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/rooms/', include('rooms.urls')),
     path('api/wishlist/', include('rooms.wishlist_urls')),
     path('api/chat/', include('chat.urls')),
+    path('api/notifications/', include('notifications.urls')),
 ]
 
 if settings.DEBUG:

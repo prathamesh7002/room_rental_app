@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'accounts',
     'rooms',
     'chat',
+    'notifications',
 ]
 
 MIDDLEWARE = [

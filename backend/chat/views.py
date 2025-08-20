@@ -6,6 +6,9 @@ from django.db.models import Q
 from django.contrib.auth import get_user_model
 from .models import ChatMessage, ChatRoom
 from .serializers import ChatMessageSerializer, ChatRoomSerializer
+from notifications.models import Notification
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 User = get_user_model()
 
@@ -84,5 +87,27 @@ def send_message(request):
     
     chat_room.last_message = message
     chat_room.save()
-    
+    # Create and send notification to receiver
+    notif = Notification.objects.create(
+        user=receiver,
+        title=f"New message from {request.user.username}",
+        message=message_text,
+        data={'room_id': chat_room.id, 'sender_id': request.user.id}
+    )
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'user_{receiver.id}',
+        {
+            'type': 'notify',
+            'payload': {
+                'id': notif.id,
+                'title': notif.title,
+                'message': notif.message,
+                'data': notif.data,
+                'is_read': notif.is_read,
+                'created_at': notif.created_at.isoformat(),
+            }
+        }
+    )
+
     return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)

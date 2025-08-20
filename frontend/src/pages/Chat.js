@@ -12,7 +12,8 @@ const Chat = () => {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [ws, setWs] = useState(null);
+  const wsRef = useRef(null);
+  const currentRoomIdRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const targetUserId = searchParams.get('user');
@@ -68,32 +69,63 @@ const Chat = () => {
   };
 
   const connectWebSocket = (roomId) => {
-    if (ws) {
-      ws.close();
+    // Close any existing socket
+    if (wsRef.current) {
+      try { wsRef.current.onclose = null; wsRef.current.close(); } catch (_) {}
     }
 
-    const wsUrl = `${config.wsBaseUrl}/chat/${roomId}/`;
+    currentRoomIdRef.current = roomId;
+
+    const token = localStorage.getItem('access_token');
+    const wsUrl = `${config.wsBaseUrl}/chat/${roomId}/?token=${encodeURIComponent(token || '')}`;
     const websocket = new WebSocket(wsUrl);
-    
+
     websocket.onopen = () => {
+      // Keep a stable reference
+      wsRef.current = websocket;
       console.log('WebSocket connected');
     };
-    
+
     websocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      // If this is my own message echo, skip to prevent duplicate (we add optimistically on send)
+      if (data.sender_id === user.id) {
+        return;
+      }
+      // Append new message
       setMessages(prev => [...prev, {
         id: data.message_id,
         sender: { id: data.sender_id, username: data.sender_username },
         message: data.message,
         timestamp: data.timestamp
       }]);
+      // Update chatRooms preview (last_message)
+      setChatRooms(prev => prev.map(r => r.id === currentRoomIdRef.current
+        ? { ...r, last_message: { message: data.message, timestamp: data.timestamp } }
+        : r
+      ));
     };
-    
+
+    websocket.onerror = (err) => {
+      console.error('WebSocket error', err);
+    };
+
     websocket.onclose = () => {
       console.log('WebSocket disconnected');
+      // Attempt lightweight reconnect if still on this room
+      const targetId = currentRoomIdRef.current;
+      if (targetId === roomId) {
+        setTimeout(() => {
+          // Only reconnect if still viewing the same room and no open socket
+          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+            connectWebSocket(roomId);
+          }
+        }, 1500);
+      }
     };
-    
-    setWs(websocket);
+
+    // Assign immediately to ref to be available for sendMessage
+    wsRef.current = websocket;
   };
 
   const sendMessage = async (e) => {
@@ -102,12 +134,26 @@ const Chat = () => {
 
     const otherParticipant = selectedRoom.participants.find(p => p.id !== user.id);
     
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
         message: newMessage,
         receiver_id: otherParticipant.id
       }));
     }
+
+    // Optimistically append my message
+    const optimistic = {
+      id: `temp-${Date.now()}`,
+      sender: { id: user.id, username: user.username },
+      message: newMessage,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, optimistic]);
+    // Update chat list preview
+    setChatRooms(prev => prev.map(r => r.id === currentRoomIdRef.current
+      ? { ...r, last_message: { message: newMessage, timestamp: optimistic.timestamp } }
+      : r
+    ));
 
     setNewMessage('');
   };
@@ -117,6 +163,16 @@ const Chat = () => {
     fetchMessages(room.id);
     connectWebSocket(room.id);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch (_) {}
+        wsRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">

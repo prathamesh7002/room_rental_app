@@ -28,3 +28,4 @@ services:
   # - type: redis
   #   name: room-rental-redis
   #   plan: starter
+    postDeployCommand: "python manage.py migrate"

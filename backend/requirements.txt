@@ -31,7 +31,7 @@ redis==5.0.1
 python-dotenv==1.0.0
 sentry-sdk==1.44.1
 dj-database-url==2.1.0
-dj-static==3.0.1
+dj-static==0.0.6
 
 # Utilities
 python-dateutil==2.9.0.post0

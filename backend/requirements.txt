@@ -22,7 +22,7 @@ python-jose==3.3.0
 cryptography==42.0.5
 
 # File handling
-Pillow==10.2.0
+
 
 # Redis (for channels)
 redis==5.0.1

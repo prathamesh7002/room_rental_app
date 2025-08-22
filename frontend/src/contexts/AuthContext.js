@@ -18,31 +18,77 @@ export const AuthProvider = ({ children }) => {
 
   const API_BASE_URL = config.apiBaseUrl;
 
+  // Try to refresh access token using refresh token
+  const refreshAccessToken = useCallback(async () => {
+    const refresh = localStorage.getItem('refresh_token');
+    if (!refresh) return null;
+    try {
+      const resp = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh });
+      const newAccess = resp.data?.access;
+      if (newAccess) {
+        localStorage.setItem('access_token', newAccess);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`;
+        return newAccess;
+      }
+      return null;
+    } catch (e) {
+      // Refresh failed; clear tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      delete axios.defaults.headers.common['Authorization'];
+      return null;
+    }
+  }, [API_BASE_URL]);
+
   const fetchUserProfile = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/auth/user/`);
+      const response = await axios.get(`${API_BASE_URL}/auth/profile/`);
       setUser(response.data);
     } catch (error) {
-      console.error('Failed to fetch user profile:', error);
+      // If unauthorized, try refreshing the access token once and retry
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          try {
+            const retry = await axios.get(`${API_BASE_URL}/auth/profile/`);
+            setUser(retry.data);
+            return;
+          } catch (_) {
+            // fall through to clear tokens below
+          }
+        }
+      }
       // Clear invalid tokens
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       delete axios.defaults.headers.common['Authorization'];
+      setUser(null);
     } finally {
       setLoading(false);
     }
-  }, [API_BASE_URL]);
+  }, [API_BASE_URL, refreshAccessToken]);
 
   // Configure axios defaults
   useEffect(() => {
     const token = localStorage.getItem('access_token');
+    const refresh = localStorage.getItem('refresh_token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchUserProfile();
+    } else if (refresh) {
+      // Attempt to refresh and then load profile
+      (async () => {
+        const newAccess = await refreshAccessToken();
+        if (newAccess) {
+          await fetchUserProfile();
+        } else {
+          setLoading(false);
+        }
+      })();
     } else {
       setLoading(false);
     }
-  }, [fetchUserProfile]); // fetchUserProfile is already in the dependencies
+  }, [fetchUserProfile, refreshAccessToken]);
 
   const login = async (username, password) => {
     try {

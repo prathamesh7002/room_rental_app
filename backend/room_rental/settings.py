@@ -82,27 +82,23 @@ ASGI_APPLICATION = 'room_rental.asgi.application'
 import pymysql
 pymysql.install_as_MySQLdb()
 
-DATABASE_ENGINE = os.getenv('DATABASE_ENGINE', 'django.db.backends.mysql')
 
-if DATABASE_ENGINE == 'django.db.backends.mysql':
-    DATABASES = {
+
+DATABASES = {
         'default': {
-            'ENGINE': DATABASE_ENGINE,
-            'NAME': os.getenv('DATABASE_NAME', 'rental_room_app_db'),
-            'USER': os.getenv('DATABASE_USER', 'root'),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD', '2007'),
-            'HOST': os.getenv('DATABASE_HOST', 'localhost'),
-            'PORT': os.getenv('DATABASE_PORT', '3306'),
+            'ENGINE': os.getenv('DATABASE_ENGINE','django.db.backends.mysql'),
+            'NAME': os.getenv('DATABASE_NAME','railway'),
+            'USER': os.getenv('DATABASE_USER','root'),
+            'PASSWORD': os.getenv('DATABASE_PASSWORD','FXCZcDvMAxDGtTSFGVXSakANvlBStVPw'),
+            'HOST': os.getenv('DATABASE_HOST','nozomi.proxy.rlwy.net'),
+            'PORT': os.getenv('DATABASE_PORT','52344'),
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+                'sql_mode': 'STRICT_TRANS_TABLES',
+            },
         }
     }
-else:
-    # SQLite (default for development)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / os.getenv('DATABASE_NAME', 'db.sqlite3'),
-        }
-    }
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -195,6 +191,8 @@ if IS_PRODUCTION:
     CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True').lower() == 'true'
     SECURE_BROWSER_XSS_FILTER = os.getenv('SECURE_BROWSER_XSS_FILTER', 'True').lower() == 'true'
     SECURE_CONTENT_TYPE_NOSNIFF = os.getenv('SECURE_CONTENT_TYPE_NOSNIFF', 'True').lower() == 'true'
+    SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'None')
+    CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE', 'None')
     
     # Email configuration for production
     EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')

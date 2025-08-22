@@ -87,11 +87,11 @@ pymysql.install_as_MySQLdb()
 DATABASES = {
         'default': {
             'ENGINE': os.getenv('DATABASE_ENGINE','django.db.backends.mysql'),
-            'NAME': os.getenv('DATABASE_NAME','railway'),
+            'NAME': os.getenv('DATABASE_NAME','rental_room_app_db'),
             'USER': os.getenv('DATABASE_USER','root'),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD','FXCZcDvMAxDGtTSFGVXSakANvlBStVPw'),
-            'HOST': os.getenv('DATABASE_HOST','nozomi.proxy.rlwy.net'),
-            'PORT': os.getenv('DATABASE_PORT','52344'),
+            'PASSWORD': os.getenv('DATABASE_PASSWORD','2007'),
+            'HOST': os.getenv('DATABASE_HOST','localhost'),
+            'PORT': os.getenv('DATABASE_PORT','3306'),
             'OPTIONS': {
                 'charset': 'utf8mb4',
                 'sql_mode': 'STRICT_TRANS_TABLES',

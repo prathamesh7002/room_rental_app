@@ -202,34 +202,25 @@ if IS_PRODUCTION:
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
     
-    # Logging configuration
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'verbose': {
-                'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-                'style': '{',
-            },
+   # Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
         },
-        'handlers': {
-            'file': {
-                'level': os.getenv('LOG_LEVEL', 'INFO'),
-                'class': 'logging.FileHandler',
-                'filename': '/var/log/django/roomrental.log',
-                'formatter': 'verbose',
-            },
-            'console': {
-                'level': 'INFO',
-                'class': 'logging.StreamHandler',
-                'formatter': 'verbose',
-            },
-        },
-        'root': {
-            'handlers': ['console', 'file'],
+    },
+    'handlers': {
+        'console': {
             'level': os.getenv('LOG_LEVEL', 'INFO'),
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
         },
-    }
-else:
-    # Development email backend
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': os.getenv('LOG_LEVEL', 'INFO'),
+    },
+}
